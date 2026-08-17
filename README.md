@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 1 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 5 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -32,6 +32,37 @@ Source (CSV/API) → Extract → Validate → Transform → Load → Serving Tab
 - Airflow (orchestration)
 - Docker
 
+## Source
+
+| File | Source | Description |
+|---|---|---|
+| `data/raw/orders_raw.csv` | Hand-crafted mock data | 20 orders พร้อม intentional dirty-data edge case (comma-formatted amount, null, negative, bad date, duplicate order_id) |
+| `data/raw/posts_raw.jsonl` | [JSONPlaceholder API](https://jsonplaceholder.typicode.com/posts) | Mock REST API ฝึก extract แบบ JSONL, 1 JSON object ต่อบรรทัด |
+
+## Config
+
+สร้างไฟล์ `.env` (ดูตัวอย่างที่ `.env.example`) — ไม่ commit ไฟล์นี้จริง เพราะเก็บ config ที่อาจเปลี่ยนตาม environment:
+
+```
+API_URL=https://jsonplaceholder.typicode.com/posts
+```
+
 ## How to Run
 
-_(จะเพิ่มตอน Week 1 เขียน Python script เสร็จ)_
+```bash
+# 1. สร้างและเปิดใช้ virtual environment (ครั้งแรกครั้งเดียว)
+python -m venv venv
+.\venv\Scripts\Activate.ps1        # Windows PowerShell
+
+# 2. ติดตั้ง dependency
+python -m pip install -r requirements.txt
+
+# 3. รัน script
+python src/clean_order.py          # clean orders_raw.csv -> data/processed/orders_clean.csv
+python src/extract_api.py          # extract API -> data/raw/posts_raw.jsonl
+```
+
+## Notes: Retry Strategy
+
+- **ควร retry**: timeout, connection error, HTTP 5xx (500, 502, 503) — เป็น error ฝั่ง server/network ที่มักเป็นปัญหาชั่วคราว retry แล้วอาจสำเร็จ
+- **ไม่ควร retry**: HTTP 4xx (400, 401, 404) — เป็น error จาก request เอง (URL ผิด, ไม่มี permission, ข้อมูลไม่มีอยู่จริง) retry ซ้ำก็จะพังเหมือนเดิมทุกครั้ง ต้องแก้ request ก่อน ไม่ใช่ retry
