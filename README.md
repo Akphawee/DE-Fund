@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 5 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 8 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -11,10 +11,12 @@
 ## Architecture (จะเพิ่มขึ้นเรื่อย ๆ ตามที่เรียน)
 
 ```
-Source (CSV/API) → Extract → Validate → Transform → Load → Serving Table
-                                                              ↓
-                                                    Orchestrated by Airflow
+Source (CSV/API) → raw/ → staging/ → serving/
+                                          ↓
+                                Orchestrated by Airflow (Week 2)
 ```
+
+รายละเอียดเต็ม (OLTP vs OLAP, ทำไม raw ต้องแยกเก็บ, เลือก file format ยังไง) ดูที่ [`docs/architecture.md`](docs/architecture.md)
 
 ## Progress Log
 
@@ -38,6 +40,7 @@ Source (CSV/API) → Extract → Validate → Transform → Load → Serving Tab
 |---|---|---|
 | `data/raw/orders_raw.csv` | Hand-crafted mock data | 20 orders พร้อม intentional dirty-data edge case (comma-formatted amount, null, negative, bad date, duplicate order_id) |
 | `data/raw/posts_raw.jsonl` | [JSONPlaceholder API](https://jsonplaceholder.typicode.com/posts) | Mock REST API ฝึก extract แบบ JSONL, 1 JSON object ต่อบรรทัด |
+| `data/staging/orders_clean.csv` | Derived from `orders_raw.csv` | ผลลัพธ์หลัง validate ด้วย `src/clean_order.py` (dedup, null check, amount/datetime validation) |
 
 ## Config
 
@@ -58,7 +61,7 @@ python -m venv venv
 python -m pip install -r requirements.txt
 
 # 3. รัน script
-python src/clean_order.py          # clean orders_raw.csv -> data/processed/orders_clean.csv
+python src/clean_order.py          # clean orders_raw.csv -> data/staging/orders_clean.csv
 python src/extract_api.py          # extract API -> data/raw/posts_raw.jsonl
 ```
 

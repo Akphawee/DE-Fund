@@ -127,7 +127,7 @@ with open('data/raw/orders_raw.csv', newline='') as f:
 
     print(wrong_date_time)
 
-    with open('data/processed/orders_clean.csv','w', newline='') as out:
+    with open('data/staging/orders_clean.csv','w', newline='') as out:
         write = csv.DictWriter(out, fieldnames=reader.fieldnames)
         write.writeheader()
         write.writerows(clean_rows)
