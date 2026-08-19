@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 8 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 9 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -17,6 +17,14 @@ Source (CSV/API) → raw/ → staging/ → serving/
 ```
 
 รายละเอียดเต็ม (OLTP vs OLAP, ทำไม raw ต้องแยกเก็บ, เลือก file format ยังไง) ดูที่ [`docs/architecture.md`](docs/architecture.md)
+
+Role ของแต่ละเครื่องมือ (cron/script/SQL engine/warehouse) + ทำไมเริ่มจาก batch ไม่ใช่ streaming ดูที่ [`docs/compute_notes.md`](docs/compute_notes.md)
+
+## Trade-offs: ทำไมเริ่มจาก batch
+
+- ข้อมูล order ไม่ต้องการความสดระดับวินาที — สรุปยอดขายรายวัน (refresh วันละครั้ง) ก็ตอบคำถามธุรกิจที่ต้องการได้แล้ว (เช่น "เมื่อวานขายได้เท่าไหร่เทียบกับวันก่อน")
+- Batch เขียน/debug/reason ง่ายกว่ามาก — ทุก script ที่เขียนมา (`clean_order.py`, `extract_api.py`, `daily_summary.py`) รันจบแล้วได้ output คงที่ตรวจสอบได้ ต่างจาก streaming ที่ต้องจัดการ ordering, duplicate, checkpoint, late data เพิ่ม (ความซับซ้อนที่ยังไม่คุ้มค่าถ้า business ไม่ได้ต้องการ real-time จริงๆ)
+- แนวทางมาตรฐาน: เริ่ม batch → ขยับเป็น micro-batch ถ้าต้องการ latency ต่ำลง → ใช้ streaming จริง (Kafka + stream processor) เฉพาะตอนที่ business case ต้องการ near-real-time เท่านั้น
 
 ## Progress Log
 
@@ -41,6 +49,7 @@ Source (CSV/API) → raw/ → staging/ → serving/
 | `data/raw/orders_raw.csv` | Hand-crafted mock data | 20 orders พร้อม intentional dirty-data edge case (comma-formatted amount, null, negative, bad date, duplicate order_id) |
 | `data/raw/posts_raw.jsonl` | [JSONPlaceholder API](https://jsonplaceholder.typicode.com/posts) | Mock REST API ฝึก extract แบบ JSONL, 1 JSON object ต่อบรรทัด |
 | `data/staging/orders_clean.csv` | Derived from `orders_raw.csv` | ผลลัพธ์หลัง validate ด้วย `src/clean_order.py` (dedup, null check, amount/datetime validation) |
+| `data/serving/daily_orders_summary.csv` | Derived from `orders_clean.csv` | สรุปยอดขายรายวัน (`order_date`, `count`, `amount`) ด้วย `src/daily_summary.py` — serving output ตัวแรกของ project |
 
 ## Config
 
@@ -63,6 +72,7 @@ python -m pip install -r requirements.txt
 # 3. รัน script
 python src/clean_order.py          # clean orders_raw.csv -> data/staging/orders_clean.csv
 python src/extract_api.py          # extract API -> data/raw/posts_raw.jsonl
+python src/daily_summary.py        # aggregate orders_clean.csv -> data/serving/daily_orders_summary.csv
 ```
 
 ## Notes: Retry Strategy

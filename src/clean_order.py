@@ -84,6 +84,7 @@ with open('data/raw/orders_raw.csv', newline='') as f:
                 
                 del_comma = amount.replace(',','')
                 to_flt = float(del_comma)
+                row['amount'] = del_comma
                 if to_flt < 0:
                     is_dirty = True                    
                     wrong_num_type.append(row)
