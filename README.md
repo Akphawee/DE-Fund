@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 10-11 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 12-13 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -13,7 +13,7 @@
 ```
 Source (CSV/API) → raw/ → staging/ → serving/
                                           ↓
-                                Orchestrated by Airflow (Week 2)
+                              Orchestrated by Airflow (see below)
 ```
 
 รายละเอียดเต็ม (OLTP vs OLAP, ทำไม raw ต้องแยกเก็บ, เลือก file format ยังไง) ดูที่ [`docs/architecture.md`](docs/architecture.md)
@@ -58,6 +58,33 @@ verify เพิ่มเติมว่าไม่มี `order_id` ซ้ำ�
 | Null / N/A | ทุกคอลัมน์ | `null_row` |
 | Amount ไม่ใช่ตัวเลข / ติดลบ | parse เป็น float ได้ และ >= 0 | `wrong_num_type` |
 | Datetime format ผิด | `created_at`/`updated_at` ต้อง parse เป็น `%Y-%m-%d %H:%M:%S` ได้ | `wrong_date_time` |
+
+## Orchestration: Airflow
+
+`airflow/dags/orders_pipeline_dag.py` runs the pipeline on a schedule instead of manually invoking each script.
+
+```
+validate_and_clean_orders  >>  build_daily_summary
+   (src/clean_order.py)         (src/daily_summary.py)
+```
+
+- Only 2 tasks, matching where the actual work boundaries already are in the codebase — `clean_order.py` does extract+validate+dedup+incremental-load in one script, `daily_summary.py` does transform+load-to-serving. Splitting further would create tasks with no independent meaning, just to hit an arbitrary "4 tasks" count.
+- **Executor**: LocalExecutor (no Celery/Redis) — this DAG has 2 sequential tasks total, a distributed worker queue would be pure overhead for a project this size.
+- **Retry-safety connects directly to Day 10-11's idempotency work**: `default_args` sets `retries: 1`. If `validate_and_clean_orders` fails partway and Airflow retries it, the retry re-reads the same watermark file and produces the same result — no duplicate rows — because the task itself is idempotent (verified separately, see Reliability section above). Retries are only safe to configure *because* the underlying script was already proven idempotent; retrying a non-idempotent task would just multiply the damage.
+- Verified with a real manual trigger (`airflow dags trigger orders_pipeline`): both tasks exited 0; `validate_and_clean_orders` correctly read the existing watermark and found 0 new rows (proving Airflow is operating on the same persistent state as manual runs, not an isolated copy); `build_daily_summary` reproduced the same 8-row summary as the manual run.
+
+### How to run Airflow locally
+
+```bash
+cd airflow
+docker compose up -d          # first run takes ~1-2 min (db init)
+docker compose ps             # wait until all containers show "healthy"
+
+# UI: http://localhost:8081  (user: airflow / pass: airflow)
+# or trigger from CLI:
+docker compose exec airflow-apiserver airflow dags unpause orders_pipeline
+docker compose exec airflow-apiserver airflow dags trigger orders_pipeline
+```
 
 ## Progress Log
 
