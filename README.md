@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 12-13 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 16 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -101,6 +101,7 @@ docker compose exec airflow-apiserver airflow dags trigger orders_pipeline
 - Python
 - Airflow (orchestration)
 - Docker
+- AWS (S3, ECS/Batch, MWAA, RDS/DynamoDB — conceptual mapping, ดู [`docs/cloud_mapping.md`](docs/cloud_mapping.md))
 
 ## Source
 
@@ -135,6 +136,18 @@ python src/clean_order.py          # clean orders_raw.csv -> data/staging/orders
 python src/extract_api.py          # extract API -> data/raw/posts_raw.jsonl
 python src/daily_summary.py        # aggregate orders_clean.csv -> data/serving/daily_orders_summary.csv
 ```
+
+### Option 2: Docker (ไม่ต้องติดตั้ง Python/venv บนเครื่อง)
+
+```bash
+docker build -t de-portfolio .
+docker run --rm de-portfolio          # default: รัน src/clean_order.py
+docker run --rm de-portfolio python src/daily_summary.py   # override default command
+```
+
+หมายเหตุ: `COPY . .` ใน `Dockerfile` เป็น **build-time snapshot** ไม่ใช่ live mount — ข้อมูลข้างใน image คือ ณ ตอน build เท่านั้น ถ้าแก้ `data/raw/orders_raw.csv` บนเครื่องต้อง `docker build` ใหม่ถึงจะเห็นการเปลี่ยนแปลง (ต่างจาก Airflow setup ด้านล่างที่ใช้ `volumes:` แบบ live)
+
+Cloud mapping (แปลง local architecture นี้เป็น AWS จริงยังไง) ดูที่ [`docs/cloud_mapping.md`](docs/cloud_mapping.md)
 
 ## Notes: Retry Strategy
 
