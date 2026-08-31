@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 16 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 17 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -86,6 +86,32 @@ docker compose exec airflow-apiserver airflow dags unpause orders_pipeline
 docker compose exec airflow-apiserver airflow dags trigger orders_pipeline
 ```
 
+## Failure Handling
+
+- **Logging**: `src/clean_order.py` เขียน log ลง `logs/pipeline.log` (level INFO ขึ้นไป) แทนที่จะ print เฉยๆ — เก็บไว้ย้อนดูได้หลังปิด terminal
+- **Error isolation**: แต่ละ row ที่ validate ไม่ผ่าน (null/negative amount/วันที่ผิด format) ถูกแยกไป `dirty_rows` ไม่ทำให้ทั้ง pipeline ล้ม — 1 row เสียไม่กระทบ row อื่น
+- **Retry**: Airflow DAG ตั้ง `retries: 1` (ดู [Notes: Retry Strategy](#notes-retry-strategy)) ปลอดภัยเพราะ pipeline idempotent
+- **Runbook**: อาการที่เจอบ่อย + วิธี diagnose + backfill steps อยู่ที่ [`docs/runbook.md`](docs/runbook.md)
+
+## Monitoring
+
+Checklist ที่ควรเช็คทุกครั้งที่ pipeline รัน (รายละเอียดใน [`docs/runbook.md`](docs/runbook.md#5-monitoring-checklist-ควรเช็คทุกวันที่-pipeline-รัน)):
+
+- **Freshness** — watermark ขยับตามข้อมูลใหม่จริง
+- **Row count** — จำนวน row เพิ่มในอัตราที่สมเหตุสมผล
+- **Duplicate check** — ไม่มี `order_id` ซ้ำใน `orders_clean.csv`
+- **Dirty row ratio** — สัดส่วน row เสียไม่เพิ่มขึ้นผิดปกติ
+
+ตอนนี้เป็น manual checklist (รันคำสั่งเช็คเอง) ยังไม่ automate เป็น alert — ขั้นถัดไปถ้าทำจริงคือต่อ CloudWatch/Datadog alert บนค่าพวกนี้
+
+## Testing
+
+Unit test สำหรับ logic ที่มีความเสี่ยงพังจริง (`src/clean_order.py` > `validate_row()`):
+
+```bash
+venv/Scripts/python.exe -m pytest tests/ -v
+```
+
 ## Progress Log
 
 | Week | สิ่งที่เพิ่มเข้ามา |
@@ -102,6 +128,8 @@ docker compose exec airflow-apiserver airflow dags trigger orders_pipeline
 - Airflow (orchestration)
 - Docker
 - AWS (S3, ECS/Batch, MWAA, RDS/DynamoDB — conceptual mapping, ดู [`docs/cloud_mapping.md`](docs/cloud_mapping.md))
+- pytest (unit test)
+- `logging` (Python standard library)
 
 ## Source
 
