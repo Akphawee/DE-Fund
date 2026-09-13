@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 19 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 20 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -123,6 +123,22 @@ Unit test สำหรับ logic ที่มีความเสี่ยง
 ```bash
 venv/Scripts/python.exe -m pytest tests/ -v
 ```
+
+## Integration Verified (2026-09-13)
+
+Full pipeline รันจบ end-to-end จริง 1 รอบ ผ่าน Airflow trigger (ไม่ใช่แค่รันแยกไฟล์):
+
+```
+Airflow trigger orders_pipeline
+  -> clean_order.py (extract -> deduplicate -> validate -> load)
+  -> daily_summary.py (aggregate)
+  -> load_to_sqlite.py (load to data/portfolio.db)
+  -> SQL grain check: (12, 12) ✓
+  -> SQL reconciliation check: (24650.5, 24650.5) ✓
+  -> pytest: 3 passed ✓
+```
+
+ไม่มี bug ใหม่โผล่ตอน integration run — เป็นผลจาก data quality check และ unit test ที่ทำไว้ตลอดทางใน Day 17-19 ไม่ใช่เพราะไม่มี edge case เหลือ
 
 ## Progress Log
 
