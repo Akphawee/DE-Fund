@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 17 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 19 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -86,6 +86,18 @@ docker compose exec airflow-apiserver airflow dags unpause orders_pipeline
 docker compose exec airflow-apiserver airflow dags trigger orders_pipeline
 ```
 
+## Data Model
+
+Star schema: 1 fact table + 1 dimension table + 1 serving table, grain ของแต่ละตารางพิสูจน์ด้วย SQL query จริง (ไม่ใช่แค่ design) — รายละเอียดเต็มที่ [`docs/data_model.md`](docs/data_model.md)
+
+| Table | Type | Grain |
+|---|---|---|
+| `orders` | Fact | 1 order / แถว |
+| `dim_customers` | Dimension | 1 customer / แถว |
+| `daily_orders_summary` | Serving | 1 วัน / แถว |
+
+SQL อยู่ใน [`sql/dim_customers.sql`](sql/dim_customers.sql), [`sql/serving_table.sql`](sql/serving_table.sql), grain/reconciliation checks อยู่ใน [`sql/data_quality_checks.sql`](sql/data_quality_checks.sql) (โหลดข้อมูลเข้า SQLite ผ่าน `src/load_to_sqlite.py` → `data/portfolio.db`)
+
 ## Failure Handling
 
 - **Logging**: `src/clean_order.py` เขียน log ลง `logs/pipeline.log` (level INFO ขึ้นไป) แทนที่จะ print เฉยๆ — เก็บไว้ย้อนดูได้หลังปิด terminal
@@ -163,6 +175,7 @@ python -m pip install -r requirements.txt
 python src/clean_order.py          # clean orders_raw.csv -> data/staging/orders_clean.csv
 python src/extract_api.py          # extract API -> data/raw/posts_raw.jsonl
 python src/daily_summary.py        # aggregate orders_clean.csv -> data/serving/daily_orders_summary.csv
+python src/load_to_sqlite.py       # load orders_clean.csv -> data/portfolio.db (สำหรับรัน sql/*.sql)
 ```
 
 ### Option 2: Docker (ไม่ต้องติดตั้ง Python/venv บนเครื่อง)
