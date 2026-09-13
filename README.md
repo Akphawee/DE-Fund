@@ -1,6 +1,6 @@
 # E-commerce Order Analytics Pipeline
 
-> Status: 🚧 In Progress — Day 20 / 28 (เริ่ม 2026-08-07)
+> Status: 🚧 In Progress — Day 22-23 / 28 (เริ่ม 2026-08-07)
 
 ## Problem
 
@@ -19,6 +19,39 @@ Source (CSV/API) → raw/ → staging/ → serving/
 รายละเอียดเต็ม (OLTP vs OLAP, ทำไม raw ต้องแยกเก็บ, เลือก file format ยังไง) ดูที่ [`docs/architecture.md`](docs/architecture.md)
 
 Role ของแต่ละเครื่องมือ (cron/script/SQL engine/warehouse) + ทำไมเริ่มจาก batch ไม่ใช่ streaming ดูที่ [`docs/compute_notes.md`](docs/compute_notes.md)
+
+## Project Structure
+
+```
+.
+├── README.md
+├── Dockerfile
+├── requirements.txt
+├── src/
+│   ├── clean_order.py       # extract -> deduplicate -> validate -> load (idempotent, incremental)
+│   ├── daily_summary.py     # aggregate orders_clean.csv -> daily serving table
+│   ├── extract_api.py       # API ingestion example
+│   └── load_to_sqlite.py    # load orders_clean.csv -> data/portfolio.db
+├── sql/
+│   ├── dim_customers.sql
+│   ├── serving_table.sql
+│   ├── data_quality_checks.sql   # grain check + reconciliation check
+│   └── practice/             # solo SQL practice, ไม่ใช่ส่วนของ pipeline
+├── airflow/
+│   ├── dags/orders_pipeline_dag.py
+│   └── docker-compose.yaml
+├── tests/
+│   └── test_clean_order.py
+├── docs/
+│   ├── architecture.md
+│   ├── data_model.md
+│   ├── runbook.md
+│   └── cloud_mapping.md
+└── data/
+    ├── raw/       # source data ต้นฉบับ
+    ├── staging/   # หลัง clean/dedup + watermark
+    └── serving/   # output พร้อมใช้ของ downstream
+```
 
 ## Trade-offs: ทำไมเริ่มจาก batch
 
@@ -205,6 +238,22 @@ docker run --rm de-portfolio python src/daily_summary.py   # override default co
 หมายเหตุ: `COPY . .` ใน `Dockerfile` เป็น **build-time snapshot** ไม่ใช่ live mount — ข้อมูลข้างใน image คือ ณ ตอน build เท่านั้น ถ้าแก้ `data/raw/orders_raw.csv` บนเครื่องต้อง `docker build` ใหม่ถึงจะเห็นการเปลี่ยนแปลง (ต่างจาก Airflow setup ด้านล่างที่ใช้ `volumes:` แบบ live)
 
 Cloud mapping (แปลง local architecture นี้เป็น AWS จริงยังไง) ดูที่ [`docs/cloud_mapping.md`](docs/cloud_mapping.md)
+
+## What I Learned
+
+- **Rerun-safe (idempotent) pipeline design** — watermark bookmark + dedup-by-latest-timestamp ทำให้รันซ้ำกี่รอบก็ได้ผลเดิม พิสูจน์จริงด้วย rerun test ไม่ใช่แค่ design บนกระดาษ
+- **Data validation ต้องแยก concern จาก transform logic** — ตอนแรกเขียนรวมกันเป็น loop เดียว debug ยากมาก พอแยกเป็น `extract/deduplicate/validate_row/load` แล้ว bug ที่ซ่อนอยู่ (เช่น `is_dirty` unbound เมื่อ row สะอาด) ถึงโผล่ออกมาให้เห็นและแก้ได้ง่าย
+- **Retry ปลอดภัยก็ต่อเมื่อ task idempotent เท่านั้น** — ตั้ง `retries` ใน Airflow แบบไม่คิดอาจทำให้ error ซ้ำซ้อนแทนที่จะแก้ปัญหา
+- **Grain ต้องนิยามและพิสูจน์ด้วย query จริง** ไม่ใช่แค่บอกปากเปล่า — reconciliation check ระหว่าง fact/serving table คือวิธีจับ bug ที่ design เอกสารจับไม่ได้
+- **Windows environment มี gotcha เฉพาะตัว** ที่ต้องรู้ (PATH ของ non-default install, UTF-16 vs UTF-8 encoding, Docker Desktop WSL2 lock) — debug จริงเจอเองถึงเข้าใจ ไม่ใช่แค่ท่องมา
+
+## Next Improvements
+
+- ต่อ CI (GitHub Actions) รัน `pytest` อัตโนมัติทุกครั้งที่ push แทนที่จะรันมือ
+- เพิ่ม schema contract check (validate ว่า input CSV มี column ครบตามที่คาดก่อนเข้า pipeline)
+- ทำ monitoring checklist ที่ตอนนี้เป็น manual ให้เป็น automated alert จริง (เช่นต่อ CloudWatch ตาม cloud mapping)
+- เพิ่ม SCD Type 2 ให้ `dim_customers` ถ้ามี attribute ที่เปลี่ยนตามเวลาในอนาคต (ดู known limitation ใน `docs/data_model.md`)
+- ทดสอบกับ data volume ใหญ่ขึ้น (ตอนนี้ทดสอบแค่ 20 rows mock data)
 
 ## Notes: Retry Strategy
 
