@@ -15,6 +15,7 @@ WATERMARK_FILE = 'data/staging/_watermark.txt'
 RAW_FILE = 'data/raw/orders_raw.csv'
 CLEAN_FILE = 'data/staging/orders_clean.csv'
 
+
 def read_watermark():
     if os.path.exists(WATERMARK_FILE):
         with open(WATERMARK_FILE) as wf:
@@ -25,79 +26,68 @@ def read_watermark():
     logger.info(f'existing watermark: {watermark}')
     return watermark
 
+
 def write_watermark(new_watermark):
     with open(WATERMARK_FILE, 'w') as wf:
         wf.write(new_watermark)
         logger.info(f'new watermark: {new_watermark}')
 
+
 def extract(path):
-    with open(path,newline='') as f:
+    with open(path, newline='') as f:
         reader = csv.DictReader(f)
         return list(reader)
+
 
 def deduplicate(rows, watermark):
     dupe_id_check = {}
     for row in rows:
-            order_id = row['order_id']
-            
-            updated_at = row['updated_at']
-    
-            if updated_at <= watermark:
-                continue 
-                
-            is_dirty = False
-    
-           # check dupe 
-           
-            if order_id not in dupe_id_check:
-                dupe_id_check[order_id] = row
-            else:
-                if updated_at > dupe_id_check[order_id]['updated_at']:
-                    dupe_id_check[order_id] = row
+        updated_at = row['updated_at']
+        if updated_at <= watermark:
+            continue
+
+        order_id = row['order_id']
+        if order_id not in dupe_id_check:
+            dupe_id_check[order_id] = row
+        elif updated_at > dupe_id_check[order_id]['updated_at']:
+            dupe_id_check[order_id] = row
 
     return dict(dupe_id_check)
 
+
 def validate_row(row):
-    order_id = row['order_id']
-    customer_id = row['customer_id']
     amount = row['amount']
-    status = row['status']
     created_at = row['created_at']
     updated_at = row['updated_at']
     is_dirty = False
-    for col,value in row.items():
+
+    for value in row.values():
         if value == '' or value == 'N/A':
             is_dirty = True
-            
-    
-                # make sure amount was number
-    
-        try:
-            if amount:
-    
-                del_comma = amount.replace(',','')
-                to_flt = float(del_comma)
-                row['amount'] = del_comma
-                if to_flt < 0:
-                    is_dirty = True
-                    
-    
-                else:
-                    logger.info(f'{row!r} -> converted successfully: {row}')
-        except ValueError:
-            logger.error(f'{row!r} -> conversion failed (ValueError), continuing without crashing')
-            
-            is_dirty = True
-    
-            #datetime 2026-06-01 09:12:0
-        try:
-                datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
-                datetime.strptime(updated_at, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-                
+
+    # make sure amount is a number
+    try:
+        if amount:
+            del_comma = amount.replace(',', '')
+            to_flt = float(del_comma)
+            row['amount'] = del_comma
+            if to_flt < 0:
                 is_dirty = True
-    
+            else:
+                logger.info(f'{row!r} -> converted successfully: {row}')
+    except ValueError:
+        logger.error(f'{row!r} -> conversion failed (ValueError), continuing without crashing')
+        is_dirty = True
+
+    # datetime format check, e.g. 2026-06-01 09:12:00
+    try:
+        datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+        datetime.strptime(updated_at, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        is_dirty = True
+
     return is_dirty, row
+
 
 def load(rows, path):
     if not rows:
@@ -105,12 +95,13 @@ def load(rows, path):
         return
 
     file_exists = os.path.exists(path)
-        
-    with open(path,'a', newline='') as out:
-            write = csv.DictWriter(out, fieldnames=rows[0].keys())
-            if not file_exists:
-                write.writeheader()
-            write.writerows(rows)
+
+    with open(path, 'a', newline='') as out:
+        write = csv.DictWriter(out, fieldnames=rows[0].keys())
+        if not file_exists:
+            write.writeheader()
+        write.writerows(rows)
+
 
 def main():
     watermark = read_watermark()
@@ -127,6 +118,7 @@ def main():
         write_watermark(max(r['updated_at'] for r in deduped.values()))
 
     load(clean_rows, CLEAN_FILE)
+
 
 if __name__ == '__main__':
     main()
