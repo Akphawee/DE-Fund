@@ -1,7 +1,7 @@
 import csv
 
 with open('data/staging/orders_clean.csv', newline='') as f:
-    #เปิด data/staging/orders_clean.csv ด้วย csv.DictReader
+    #open data/staging/orders_clean.csv with csv.DictReader
     reader = csv.DictReader(f)
     print(type(reader))
 

@@ -22,13 +22,13 @@ def read_watermark():
     else:
         watermark = '1900-01-01 00:00:00'
 
-    logger.info(f'watermark เดิม: {watermark}')
+    logger.info(f'existing watermark: {watermark}')
     return watermark
 
 def write_watermark(new_watermark):
     with open(WATERMARK_FILE, 'w') as wf:
         wf.write(new_watermark)
-        logger.info(f'watermark ใหม่: {new_watermark}')
+        logger.info(f'new watermark: {new_watermark}')
 
 def extract(path):
     with open(path,newline='') as f:
@@ -83,9 +83,9 @@ def validate_row(row):
                     
     
                 else:
-                    logger.info(f'{row!r} -> แปลงสำเร็จ: {row}')
+                    logger.info(f'{row!r} -> converted successfully: {row}')
         except ValueError:
-            logger.error(f'{row!r} -> แปลงไม่ได้ (ValueError) แต่โปรแกรมไม่ crash!')
+            logger.error(f'{row!r} -> conversion failed (ValueError), continuing without crashing')
             
             is_dirty = True
     
@@ -101,7 +101,7 @@ def validate_row(row):
 
 def load(rows, path):
     if not rows:
-        logger.info('ไม่มี row ใหม่ให้เขียน (rows ว่าง) ข้าม load')
+        logger.info('no new rows to write (rows is empty), skipping load')
         return
 
     file_exists = os.path.exists(path)

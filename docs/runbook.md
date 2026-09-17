@@ -1,30 +1,30 @@
 # Runbook
 
-pipeline พังตอนตี 3 (หรือเวลาไหนก็ตาม) — เช็คอะไรก่อน แก้ยังไง
+The pipeline breaks at 3am (or any other time) — what to check first, and how to fix it.
 
-## 1. เช็คว่าพังจริงมั้ย และพังตรงไหน
+## 1. Confirm it actually broke, and where
 
 ```bash
 tail -50 logs/pipeline.log
 ```
 
-ดู log ล่าสุด หา level `ERROR` — ข้อความ error จะบอกตรงๆ ว่าพังที่ฟังก์ชันไหน (`read_watermark`, `extract`, `deduplicate`, `validate_row`, `load`)
+Check the latest log for `ERROR` level entries — the error message names the function where it failed (`read_watermark`, `extract`, `deduplicate`, `validate_row`, `load`).
 
-ถ้ารันผ่าน Airflow ให้ดู task log ใน UI (`http://localhost:8081`) หรืออ่านตรงจาก `airflow/logs/dag_id=orders_pipeline/run_id=.../`
+If it ran through Airflow, check the task log in the UI (`http://localhost:8081`) or read it directly from `airflow/logs/dag_id=orders_pipeline/run_id=.../`.
 
-## 2. อาการที่เจอบ่อย และวิธีแก้
+## 2. Common symptoms and fixes
 
-| อาการ | สาเหตุที่เป็นไปได้ | เช็คยังไง |
+| Symptom | Likely cause | How to check |
 |---|---|---|
-| `FileNotFoundError` ตอน `extract()` | ไฟล์ raw ยังไม่มา หรือ path ผิด | เช็คว่า `data/raw/orders_raw.csv` มีอยู่จริง และ mtime ล่าสุดตรงกับที่คาด |
-| pipeline รันผ่านแต่ `orders_clean.csv` ไม่มี row ใหม่เพิ่ม | ปกติถ้าไม่มี order ใหม่จริงๆ (watermark กันไว้) — ไม่ใช่ bug | เช็ค `data/staging/_watermark.txt` เทียบกับ `updated_at` ล่าสุดใน raw data ว่าตรงกันมั้ย |
-| row หายไปเยอะผิดปกติ (ไปอยู่ `dirty_rows`) | ข้อมูลต้นทางเสีย (null, negative amount, วันที่ผิด format) | ดู log level `ERROR`/`WARNING` จาก `validate_row` — จะบอกว่า row ไหนติดอะไร |
-| watermark ไม่ขยับ (ค่าเดิมตลอด) | ไม่มี row ที่ `updated_at > watermark` เลย หรือ raw data ไม่ได้ถูกอัปเดตจริง | เช็คแหล่งข้อมูลต้นทางว่ามี data ใหม่จริงมั้ย |
-| รันซ้ำแล้ว `orders_clean.csv` มี row ซ้ำ | ไม่ควรเกิด — pipeline design เป็น idempotent (ดู README > Reliability) ถ้าเกิดแปลว่ามี bug ใน dedup logic | รัน rerun test ตามที่ README อธิบาย เทียบ line count ก่อน/หลัง |
+| `FileNotFoundError` during `extract()` | Raw file hasn't arrived yet, or the path is wrong | Confirm `data/raw/orders_raw.csv` exists and its mtime matches expectations |
+| Pipeline runs fine but `orders_clean.csv` gets no new rows | Normal if there's genuinely no new order data (the watermark is doing its job) — not a bug | Compare `data/staging/_watermark.txt` against the latest `updated_at` in the raw data |
+| Unusually many rows dropped into `dirty_rows` | Bad source data (null, negative amount, bad date format) | Check `ERROR`/`WARNING` level logs from `validate_row` — they name which row failed which check |
+| Watermark isn't moving (same value every run) | No row has `updated_at > watermark`, or the raw data genuinely isn't being updated | Check the source system for actual new data |
+| Duplicate rows in `orders_clean.csv` after a rerun | Shouldn't happen — the pipeline is designed to be idempotent (see README > Reliability). If it does, there's a bug in the dedup logic | Run the rerun test described in the README, comparing line counts before/after |
 
-## 3. Backfill (รันย้อนหลังทั้งหมด)
+## 3. Backfill (reprocess everything)
 
-ถ้าต้อง reprocess ข้อมูลทั้งหมดใหม่ (เช่น พบว่า validate logic เคยมี bug และอยากรันซ้ำ):
+To reprocess all data from scratch (e.g. after discovering a bug in the validation logic that needs to be re-applied):
 
 ```bash
 echo '1900-01-01 00:00:00' > data/staging/_watermark.txt
@@ -32,19 +32,19 @@ rm -f data/staging/orders_clean.csv
 python src/clean_order.py
 ```
 
-**ระวัง:** คำสั่งนี้ล้าง `orders_clean.csv` ทิ้งแล้วสร้างใหม่ทั้งหมด ห้ามรันบน production data โดยไม่ backup ก่อน
+**Warning:** this wipes `orders_clean.csv` and rebuilds it from scratch. Never run this against production data without a backup first.
 
-## 4. Unit test ก่อน deploy การแก้ไขใดๆ
+## 4. Run unit tests before deploying any fix
 
 ```bash
 venv/Scripts/python.exe -m pytest tests/ -v
 ```
 
-ถ้า test ไม่ผ่าน ห้าม deploy — logic เปลี่ยนแล้วพังจุดที่เคยถูกต้อง
+If tests fail, don't deploy — the logic change broke something that was previously correct.
 
-## 5. Monitoring checklist (ควรเช็คทุกวันที่ pipeline รัน)
+## 5. Monitoring checklist (run after every pipeline execution)
 
-- [ ] **Freshness** — `data/staging/_watermark.txt` ขยับทุกวันที่มี order ใหม่จริง (ถ้าไม่ขยับติดกันหลายวันแต่รู้ว่ามี order ใหม่เข้ามา = ผิดปกติ)
-- [ ] **Row count** — จำนวน row ใน `orders_clean.csv` เพิ่มขึ้นในอัตราที่สมเหตุสมผล (ไม่ใช่ 0 ตลอด ไม่ใช่พุ่งผิดปกติ)
-- [ ] **Duplicate check** — `order_id` ใน `orders_clean.csv` ไม่ควรซ้ำ (`cut -d',' -f1 data/staging/orders_clean.csv | sort | uniq -d` ควรว่างเปล่า)
-- [ ] **Dirty row ratio** — สัดส่วน row ที่ตกไป `dirty_rows` เทียบกับ row ทั้งหมด ไม่ควรเพิ่มขึ้นผิดปกติ (สัญญาณว่าต้นทางข้อมูลเริ่มเสีย)
+- [ ] **Freshness** — `data/staging/_watermark.txt` advances on every day with real new orders (if it stays flat for several days while new orders are known to exist, that's abnormal).
+- [ ] **Row count** — the row count in `orders_clean.csv` grows at a reasonable rate (not stuck at 0, not spiking abnormally).
+- [ ] **Duplicate check** — `order_id` in `orders_clean.csv` should never repeat (`cut -d',' -f1 data/staging/orders_clean.csv | sort | uniq -d` should return nothing).
+- [ ] **Dirty row ratio** — the proportion of rows landing in `dirty_rows` relative to total rows shouldn't increase abnormally (a sign the source data is degrading).

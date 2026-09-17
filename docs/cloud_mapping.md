@@ -1,22 +1,22 @@
 # Cloud Mapping (AWS)
 
-Local component ตอนนี้ (Docker + flat files บนเครื่อง) แมปไปเป็น AWS service จริงยังไง — ยังไม่ได้ deploy จริง แค่แสดงว่า architecture ที่ทำมาแปลงเป็น production cloud setup ได้อย่างไร
+How the current local setup (Docker + flat files on disk) maps to real AWS services — nothing here is actually deployed. The goal is to show how the architecture built in this project would translate into a production cloud setup.
 
-| Local ตอนนี้ | AWS Service | เหตุผล |
+| Local now | AWS Service | Why |
 |---|---|---|
-| `data/raw/`, `data/staging/`, `data/serving/` (flat CSV/JSONL files) | **S3** | Object storage เก็บไฟล์แบบ folder structure ได้ตรงๆ (`s3://bucket/raw/`, `s3://bucket/staging/`, `s3://bucket/serving/`) ราคาถูก เป็นมาตรฐานของ data lake |
-| `src/clean_order.py`, `src/daily_summary.py` (รันผ่าน `Dockerfile` ที่เพิ่ง build) | **ECS Fargate** หรือ **AWS Batch** | มี Docker image พร้อมอยู่แล้ว — สอง service นี้รัน container image ตรงๆ แบบ serverless ไม่ต้องดูแล server เอง ต่างจาก Lambda ที่เหมาะกับงานสั้น/เบา (มี time limit 15 นาที, memory limit) มากกว่างาน pipeline |
-| Airflow (ตั้งเองผ่าน Docker Compose, `airflow/`) | **Amazon MWAA** (Managed Workflows for Apache Airflow) | Airflow ตัวเดียวกันเป๊ะ แค่ AWS จัดการ infra เบื้องหลัง (postgres, scheduler, worker, scaling) แทนที่จะดูแลเอง |
-| `data/staging/_watermark.txt` (scalar state ตัวเดียว) | **DynamoDB** (หรือ Parameter Store สำหรับ config ง่ายๆ) | ต้อง read/write ค่าเดียวบ่อยๆ ทุกรอบ pipeline — DynamoDB (key-value db) เหมาะกว่าไฟล์บน S3 เพราะ S3 ไม่ได้ออกแบบมาสำหรับ update ค่าเดิมซ้ำถี่ๆ |
-| Postgres ภายใน Airflow container (metadata db) | **RDS** (managed PostgreSQL) | MWAA จัดการให้อยู่แล้วเบื้องหลัง แต่ถ้าตั้ง Airflow เองบน EC2/ECS ก็ต้องมี RDS แยกสำหรับ metadata db |
+| `data/raw/`, `data/staging/`, `data/serving/` (flat CSV/JSONL files) | **S3** | Object storage maps directly onto this folder structure (`s3://bucket/raw/`, `s3://bucket/staging/`, `s3://bucket/serving/`), is cheap, and is the standard for a data lake. |
+| `src/clean_order.py`, `src/daily_summary.py` (run via the existing `Dockerfile`) | **ECS Fargate** or **AWS Batch** | A Docker image already exists — both services run a container image directly, serverless, with no servers to manage. Lambda is a better fit for short/light jobs (15-minute time limit, memory limit) than for pipeline workloads. |
+| Airflow (self-hosted via Docker Compose, `airflow/`) | **Amazon MWAA** (Managed Workflows for Apache Airflow) | The same Airflow, just with AWS managing the infra behind it (Postgres, scheduler, worker, scaling) instead of self-managing it. |
+| `data/staging/_watermark.txt` (a single scalar value) | **DynamoDB** (or Parameter Store for simple config) | This value gets read/written every pipeline run — a key-value store like DynamoDB fits better than a file on S3, since S3 isn't designed for frequent in-place updates. |
+| Postgres inside the Airflow container (metadata db) | **RDS** (managed PostgreSQL) | MWAA manages this behind the scenes already, but a self-hosted Airflow on EC2/ECS would need a separate RDS instance for the metadata db. |
 
-## หลักการรวบ (จำ pattern นี้พอ ไม่ต้องจำทุก service)
+## General pattern (this is the part worth remembering, not every individual service)
 
 - Local file / flat file storage → **S3**
-- Local compute (script, container) → **ECS / Batch / Lambda** (เลือกตามขนาดงาน — งานสั้นเบา = Lambda, งานหนัก/ใช้ container อยู่แล้ว = ECS/Batch)
+- Local compute (script, container) → **ECS / Batch / Lambda** (pick based on job size — short and light = Lambda, heavier or already containerized = ECS/Batch)
 - Local orchestrator (Airflow) → **MWAA**
-- Local database → **RDS** (relational) หรือ **DynamoDB** (key-value/state)
+- Local database → **RDS** (relational) or **DynamoDB** (key-value/state)
 
-## หมายเหตุ
+## Note
 
-Mapping นี้เป็น conceptual เท่านั้น ยังไม่ได้ deploy จริงบน AWS — เป้าหมายคือแสดงให้เห็นว่า local architecture ที่ทำมาตลอดโปรเจกต์ (source → raw → staging → serving, ดู [`architecture.md`](architecture.md)) ไม่ใช่แค่ของเล่นสำหรับฝึก แต่ scale ไปเป็น production cloud setup ได้โดยไม่ต้องเปลี่ยน design หลัก แค่เปลี่ยนตัว implementation ของแต่ละ component
+This mapping is conceptual only — nothing here has been deployed to AWS. The point is to show that the local architecture built throughout this project (source → raw → staging → serving, see [`architecture.md`](architecture.md)) isn't just a training exercise; it scales into a production cloud setup without changing the core design, only the implementation of each component.

@@ -1,33 +1,33 @@
 -- Data Quality Checks -- orders table
--- รันก่อนปล่อยตารางให้ downstream (dashboard, analyst) ใช้ต่อ
+-- Run before handing this table off to downstream consumers (dashboard, analyst)
 
--- 1. Null check: field สำคัญห้ามว่าง
+-- 1. Null check: required fields must not be empty
 SELECT * FROM orders WHERE order_id IS NULL;
-SELECT * FROM orders WHERE customer_id IS NULL;   -- พบ 2 แถว (O005, O037) -- orphan order รอตัดสินใจว่าจะ reject หรือ investigate ต้นทาง
+SELECT * FROM orders WHERE customer_id IS NULL;   -- found 2 rows (O005, O037) -- orphan orders, pending a decision on reject vs. investigate at the source
 SELECT * FROM orders WHERE amount IS NULL;
 
--- 2. Duplicate check: primary key ห้ามซ้ำ
+-- 2. Duplicate check: primary key must not repeat
 SELECT order_id, COUNT(*) AS n
 FROM orders
 GROUP BY order_id
-HAVING COUNT(*) > 1;   -- ควรว่างเปล่าเสมอ
+HAVING COUNT(*) > 1;   -- should always be empty
 
--- 3. Accepted values check: status ต้องอยู่ในค่าที่รับได้เท่านั้น
+-- 3. Accepted values check: status must be one of the allowed values
 SELECT DISTINCT status FROM orders
-WHERE status NOT IN ('paid', 'cancelled', 'pending');   -- ควรว่างเปล่า
+WHERE status NOT IN ('paid', 'cancelled', 'pending');   -- should be empty
 
--- 4. Grain check: fact table (orders) ต้องมี grain = 1 แถว ต่อ 1 order
--- ถ้า total_rows != unique_orders แปลว่ามี order_id ซ้ำหลุดมา (dedup logic มี bug)
+-- 4. Grain check: the fact table (orders) must have grain = 1 row per order
+-- if total_rows != unique_orders, a duplicate order_id slipped through (bug in dedup logic)
 SELECT COUNT(*) AS total_rows, COUNT(DISTINCT order_id) AS unique_orders
-FROM orders;   -- สอง column นี้ต้องเท่ากันเสมอ
+FROM orders;   -- these two columns must always be equal
 
--- 5. Serving table reconciliation: SUM(amount) ใน serving table ต้องเท่ากับ SUM(amount) ใน fact table
--- ถ้าไม่เท่ากันแปลว่า serving_table.sql มี bug (filter ผิด, GROUP BY ผิด grain, ฯลฯ)
+-- 5. Serving table reconciliation: SUM(amount) in the serving table must equal SUM(amount) in the fact table
+-- if they don't match, serving_table.sql has a bug (wrong filter, wrong GROUP BY grain, etc.)
 SELECT
     (SELECT SUM(amount) FROM orders) AS fact_total,
     (SELECT SUM(total_amount) FROM (
         SELECT substr(created_at, 1, 10) AS order_date, SUM(amount) AS total_amount
         FROM orders GROUP BY order_date
-    )) AS serving_total;   -- สอง column นี้ต้องเท่ากันเสมอ
--- verified manually 2026-09-13: SQL serving_table.sql output ตรงกับ data/serving/daily_orders_summary.csv
--- (Python-generated version จาก daily_summary.py) ทุกแถว 100%
+    )) AS serving_total;   -- these two columns must always be equal
+-- verified manually 2026-09-13: SQL serving_table.sql output matches data/serving/daily_orders_summary.csv
+-- (the Python-generated version from daily_summary.py) exactly on every row
