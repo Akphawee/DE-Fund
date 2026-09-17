@@ -9,3 +9,7 @@ airflow/config/airflow.cfg
 .pytest_cache/
 logs/
 data/portfolio.db
+
+# personal practice notes, not part of the deliverable
+sql/practice/
+docs/cli_cheatsheet.md

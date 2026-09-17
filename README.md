@@ -35,8 +35,7 @@ Role of each tool (cron/script/SQL engine/warehouse) and why this starts with ba
 ├── sql/
 │   ├── dim_customers.sql
 │   ├── serving_table.sql
-│   ├── data_quality_checks.sql   # grain check + reconciliation check
-│   └── practice/             # solo SQL practice, not part of the pipeline
+│   └── data_quality_checks.sql   # grain check + reconciliation check
 ├── airflow/
 │   ├── dags/orders_pipeline_dag.py
 │   └── docker-compose.yaml
